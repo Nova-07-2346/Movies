@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0d12">
+<title>Movie Player</title>
+<style>
+:root {
+    color-scheme: dark;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0b0d12;
+    color: #f4f6fb;
+    font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    min-width: 320px;
+    margin: 0;
+    background: radial-gradient(ellipse at top, #172033 0, #0b0d12 48rem);
+}
+
+header {
+    position: sticky;
+    z-index: 5;
+    top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px max(20px, calc((100vw - 1180px) / 2));
+    border-bottom: 1px solid #ffffff12;
+    background: #0b0d12eF;
+    backdrop-filter: blur(16px);
+}
+
+.brand {
+    color: #f5f7ff;
+    font-size: 19px;
+    font-weight: 800;
+    letter-spacing: -.04em;
+}
+
+.brand-mark { color: #65a7ff; }
+
+.catalog-count {
+    color: #9ba6ba;
+    font-size: 13px;
+}
+
+main {
+    width: min(1180px, 100%);
+    margin: 0 auto;
+    padding: 30px 20px 64px;
+}
+
+.intro {
+    margin: 0 0 22px;
+}
+
+.eyebrow {
+    margin: 0 0 7px;
+    color: #78aaff;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+}
+
+h1 {
+    margin: 0;
+    font-size: clamp(27px, 4vw, 38px);
+    letter-spacing: -.045em;
+}
+
+.subtitle {
+    margin: 8px 0 0;
+    color: #9ba6ba;
+    font-size: 14px;
+}
+
+.catalog-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 0 0 16px;
+}
+
+h2 {
+    margin: 0;
+    font-size: 20px;
+    letter-spacing: -.03em;
+}
+
+#search {
+    width: min(320px, 55vw);
+    padding: 11px 13px;
+    border: 1px solid #ffffff1c;
+    border-radius: 10px;
+    outline: none;
+    background: #141821;
+    color: #f4f6fb;
+    font: inherit;
+    font-size: 13px;
+}
+
+#search:focus, select:focus-visible, button:focus-visible, a:focus-visible {
+    outline: 2px solid #65a7ff;
+    outline-offset: 2px;
+}
+
+#movieList {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+    gap: 16px;
+}
+
+.movie-card {
+    overflow: hidden;
+    min-width: 0;
+    border: 1px solid #ffffff12;
+    border-radius: 14px;
+    background: #141821;
+    transition: transform .18s ease, border-color .18s ease, background .18s ease;
+}
+
+.movie-card:hover {
+    transform: translateY(-3px);
+    border-color: #65a7ff66;
+    background: #181e2a;
+}
+
+.poster-button {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: #202633;
+    cursor: pointer;
+}
+
+.poster {
+    display: block;
+    width: 100%;
+    aspect-ratio: 2 / 2.75;
+    object-fit: cover;
+    color: #9ba6ba;
+    font-size: 13px;
+    transition: transform .25s ease;
+}
+
+.poster-button:hover .poster { transform: scale(1.035); }
+
+.poster-play {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border: 1px solid #ffffff55;
+    border-radius: 50%;
+    background: #0b0d12d9;
+    color: #fff;
+    font-size: 16px;
+}
+
+.movie-info { padding: 13px; }
+
+.movie-title {
+    display: -webkit-box;
+    overflow: hidden;
+    min-height: 42px;
+    margin: 0 0 11px;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.movie-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+}
+
+select, .play-button {
+    min-width: 0;
+    height: 39px;
+    padding: 0 10px;
+    border: 1px solid #ffffff17;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 12px;
+}
+
+select {
+    width: 100%;
+    background: #202633;
+    color: #f4f6fb;
+}
+
+.play-button {
+    border: 0;
+    background: #3985f6;
+    color: white;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.play-button:hover { background: #5798ff; }
+.play-button:disabled { background: #303744; color: #778194; cursor: not-allowed; }
+
+.empty-state {
+    grid-column: 1 / -1;
+    padding: 36px 18px;
+    border: 1px dashed #ffffff26;
+    border-radius: 14px;
+    color: #9ba6ba;
+    text-align: center;
+}
+
+@media (max-width: 700px) {
+    header { padding: 14px 16px; }
+    main { padding: 22px 14px 44px; }
+    #movieList { grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 11px; }
+    .movie-info { padding: 10px; }
+    .movie-title { font-size: 13px; }
+}
+
+@media (max-width: 390px) {
+    .catalog-toolbar { align-items: stretch; flex-direction: column; }
+    #search { width: 100%; }
+}
+</style>
+</head>
+<body>
+<header>
+    <div class="brand"><span class="brand-mark">▶</span> Movie Player</div>
+    <div class="catalog-count" id="catalogCount">Loading catalog…</div>
+</header>
+
+<main>
+    <section class="intro">
+        <p class="eyebrow">Your movie collection</p>
+        <h1>Find something to watch</h1>
+        <p class="subtitle">Choose a movie, pick a quality, and press play.</p>
+    </section>
+
+    <section aria-labelledby="catalogTitle">
+        <div class="catalog-toolbar">
+            <h2 id="catalogTitle">All movies</h2>
+            <input id="search" type="search" placeholder="Search movies…" aria-label="Search movies">
+        </div>
+        <div id="movieList" aria-live="polite"></div>
+    </section>
+</main>
+
+<script>
+const API_URL = "/api/movies";
+const movieList = document.getElementById("movieList");
+const catalogCount = document.getElementById("catalogCount");
+const searchInput = document.getElementById("search");
+let movies = [];
+
+function isHttpUrl(value) {
+    return typeof value === "string" && /^https?:\/\//i.test(value);
+}
+
+function getStreams(movie) {
+    const streams = [];
+    const addStream = (label, value) => {
+        const url = typeof value === "string" ? value : value?.url || value?.link;
+        if (isHttpUrl(url) && !streams.some(stream => stream.url === url)) {
+            streams.push({ label: String(label || "Default"), url });
+        }
+    };
+
+    if (Array.isArray(movie.qualities)) {
+        movie.qualities.forEach(item => {
+            if (item && typeof item === "object") {
+                addStream(item.quality || item.name || item.label, item);
+            }
+        });
+    }
+
+    if (movie.links && typeof movie.links === "object" && !Array.isArray(movie.links)) {
+        Object.entries(movie.links).forEach(([label, value]) => addStream(label, value));
+    }
+
+    const metadata = new Set([
+        "name", "poster", "source_url", "source_name", "last_updated",
+        "links", "qualities", "description", "year", "genre"
+    ]);
+    Object.entries(movie).forEach(([label, value]) => {
+        if (!metadata.has(label)) addStream(label, value);
+    });
+
+    const qualityRank = label => {
+        const normalized = label.toLowerCase();
+        if (normalized.includes("4k") || normalized.includes("2160")) return 2160;
+        const match = normalized.match(/(\d{3,4})p/);
+        return match ? Number(match[1]) : 0;
+    };
+    return streams.sort((a, b) => qualityRank(b.label) - qualityRank(a.label));
+}
+
+
+function playMovie(movie, stream, streams) {
+    if (!stream || !stream.url) return;
+
+    const params = new URLSearchParams({
+        title: movie.name || "Movie",
+        url: stream.url,
+        quality: stream.label || "Default",
+        source_url: movie.source_url || "",
+        qualities: JSON.stringify(streams)
+    });
+
+    window.location.href = `/video?${params.toString()}`;
+}
+
+
+function createMovieCard(movie, index) {
+    const streams = getStreams(movie);
+    const card = document.createElement("article");
+    card.className = "movie-card";
+
+    const posterButton = document.createElement("button");
+    posterButton.className = "poster-button";
+    posterButton.type = "button";
+    posterButton.setAttribute("aria-label", `Play ${movie.name || `Movie ${index + 1}`}`);
+
+    const poster = document.createElement("img");
+    poster.className = "poster";
+    poster.alt = movie.name ? `${movie.name} poster` : "Movie poster";
+    poster.loading = "lazy";
+    if (isHttpUrl(movie.poster)) {
+        poster.src = movie.poster;
+        poster.addEventListener("error", () => poster.removeAttribute("src"), { once: true });
+    }
+
+    const posterPlay = document.createElement("span");
+    posterPlay.className = "poster-play";
+    posterPlay.setAttribute("aria-hidden", "true");
+    posterPlay.textContent = "▶";
+    posterButton.append(poster, posterPlay);
+
+    const info = document.createElement("div");
+    info.className = "movie-info";
+    const title = document.createElement("h3");
+    title.className = "movie-title";
+    title.textContent = movie.name || `Movie ${index + 1}`;
+
+    const controls = document.createElement("div");
+    controls.className = "movie-controls";
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `Quality for ${title.textContent}`);
+    const playButton = document.createElement("button");
+    playButton.className = "play-button";
+    playButton.type = "button";
+    playButton.textContent = "▶ Play";
+
+    streams.forEach((stream, streamIndex) => {
+        const option = document.createElement("option");
+        option.value = String(streamIndex);
+        option.textContent = stream.label;
+        select.appendChild(option);
+    });
+
+    const playSelected = () => playMovie(movie, streams[Number(select.value)], streams);
+    posterButton.addEventListener("click", playSelected);
+    playButton.addEventListener("click", playSelected);
+
+    if (streams.length === 0) {
+        const option = document.createElement("option");
+        option.textContent = "No playable quality";
+        select.appendChild(option);
+        select.disabled = true;
+        playButton.disabled = true;
+    }
+
+    controls.append(select, playButton);
+    info.append(title, controls);
+    card.append(posterButton, info);
+    return card;
+}
+
+function renderMovies() {
+    const query = searchInput.value.trim().toLocaleLowerCase();
+    const filtered = movies
+        .map((movie, index) => ({ movie, index }))
+        .filter(({ movie }) => String(movie.name || "").toLocaleLowerCase().includes(query));
+
+    movieList.replaceChildren();
+    if (filtered.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.textContent = movies.length ? "No movies match your search." : "No movies are available yet.";
+        movieList.appendChild(empty);
+    } else {
+        filtered.forEach(({ movie, index }) => movieList.appendChild(createMovieCard(movie, index)));
+    }
+    catalogCount.textContent = `${filtered.length} of ${movies.length} movies`;
+}
+
+async function loadMovies() {
+    try {
+        const response = await fetch(API_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        applyCatalogData(await response.json());
+    } catch (error) {
+        catalogCount.textContent = "Catalog unavailable";
+        movieList.replaceChildren();
+        const message = document.createElement("div");
+        message.className = "empty-state";
+        message.textContent = `Could not load movies: ${error.message}. Check that the movie server is running, then refresh this page.`;
+        movieList.appendChild(message);
+    }
+}
+
+function applyCatalogData(data) {
+    data = data?.record?.data ?? data?.record ?? data?.data ?? data;
+    if (Array.isArray(data)) {
+        movies = data;
+    } else if (Array.isArray(data?.movies)) {
+        movies = data.movies;
+    } else if (Array.isArray(data?.data?.movies)) {
+        movies = data.data.movies;
+    } else {
+        throw new Error("The catalog update does not contain a movies array.");
+    }
+
+    movies = movies.filter(movie => movie && typeof movie === "object" && !Array.isArray(movie));
+    renderMovies();
+}
+
+let catalogReconnectTimer;
+
+function connectCatalogSocket() {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${protocol}//${window.location.host}/ws/catalog`);
+
+    socket.addEventListener("message", event => {
+        try {
+            const update = JSON.parse(event.data);
+            if (update.type === "catalog") applyCatalogData(update.data);
+        } catch (error) {
+            console.error("Could not apply the live catalog update:", error);
+        }
+    });
+
+    socket.addEventListener("close", () => {
+        clearTimeout(catalogReconnectTimer);
+        catalogReconnectTimer = setTimeout(connectCatalogSocket, 3000);
+    });
+
+    socket.addEventListener("error", () => socket.close());
+}
+
+searchInput.addEventListener("input", renderMovies);
+loadMovies();
+connectCatalogSocket();
+</script>
+</body>
+</html>
