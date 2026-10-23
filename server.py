@@ -779,6 +779,7 @@ def run_update_loop():
 
 if __name__ == "__main__":
     Thread(target=run_update_loop, daemon=True).start()
+
     app.run(
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "5000")),
@@ -786,4 +787,6 @@ if __name__ == "__main__":
         use_reloader=False,
         debug=True
     )
+else:
+    Thread(target=run_update_loop, daemon=True).start()
                     
