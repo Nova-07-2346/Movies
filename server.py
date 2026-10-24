@@ -1,5 +1,6 @@
 import os
 import json
+import sqlite3
 import time
 from copy import deepcopy
 import requests
@@ -12,16 +13,13 @@ from threading import Lock, Thread, local
 from flask import Flask, jsonify, render_template, request 
 from flask_sock import Sock
 from simple_websocket.errors import ConnectionClosed
-from pymongo import MongoClient 
-from pymongo.errors import PyMongoError
-import certifi
 from flask_cors import CORS
 
 
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://novans2424_db_user:NfOtLzAA8FRAc42e@cluster0.cfexnxm.mongodb.net/")
-MONGODB_DATABASE = os.getenv("MONGODB_DATABASE", "iptv")
-MONGODB_COLLECTION = os.getenv("MONGODB_COLLECTION", "app_state")
-MONGODB_DOCUMENT_ID = os.getenv("MONGODB_DOCUMENT_ID", "maindata")
+DATABASE_PATH = os.getenv(
+    "DATABASE_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalog.sqlite3"),
+)
 MAX_WORKERS = 8
 LINK_CHECK_INTERVAL_SECONDS = 10
 REMOTE_CONTROL_ALLOWED_ORIGINS = {
@@ -42,8 +40,7 @@ Main_data = {
   "movies": [ ]
 }
 main_data_lock = Lock()
-mongo_client_lock = Lock()
-mongo_client = None
+catalog_db_lock = Lock()
 app = Flask(__name__)
 CORS(app)
 sock = Sock(app)
@@ -67,18 +64,81 @@ def add_remote_control_cors_headers(response):
     return response
 
 
+def _save_catalog(data):
+    if (
+        not isinstance(data, dict)
+        or not isinstance(data.get("default_mov"), list)
+        or not isinstance(data.get("movies"), list)
+    ):
+        raise ValueError("Catalog must contain default_mov and movies arrays")
+
+    serialized = json.dumps(data)
+    with catalog_db_lock:
+        connection = sqlite3.connect(DATABASE_PATH, timeout=10)
+        try:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS catalog (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    data TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO catalog (id, data) VALUES (1, ?)
+                ON CONFLICT(id) DO UPDATE SET data = excluded.data
+                """,
+                (serialized,),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+
+def _load_catalog():
+    with catalog_db_lock:
+        connection = sqlite3.connect(DATABASE_PATH, timeout=10)
+        try:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS catalog (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    data TEXT NOT NULL
+                )
+                """
+            )
+            row = connection.execute(
+                "SELECT data FROM catalog WHERE id = 1"
+            ).fetchone()
+        finally:
+            connection.close()
+
+    if row is None:
+        with main_data_lock:
+            catalog = deepcopy(Main_data)
+        _save_catalog(catalog)
+        return catalog
+
+    try:
+        catalog = json.loads(row[0])
+    except json.JSONDecodeError as exc:
+        raise ValueError("SQLite catalog contains invalid JSON") from exc
+    if (
+        not isinstance(catalog, dict)
+        or not isinstance(catalog.get("default_mov"), list)
+        or not isinstance(catalog.get("movies"), list)
+    ):
+        raise ValueError("SQLite catalog must contain default_mov and movies arrays")
+    return catalog
+
+
 def _catalog_snapshot():
-    with main_data_lock:
-        return deepcopy(Main_data)
+    return _load_catalog()
 
 
 def _default_movies_snapshot():
-    with main_data_lock:
-        return deepcopy(Main_data.get("default_mov", []))
-
-
-def _persist_default_movies(urls):
-    update_cloud_data({"default_mov": list(urls)})
+    return _load_catalog()["default_mov"]
 
 
 def _movie_source_url(url):
@@ -130,6 +190,7 @@ def _apply_refreshed_movie(url, refreshed_movie, broadcast=True):
         while len(movies) < len(Main_data["default_mov"]):
             movies.append({})
         movies[movie_index] = refreshed_movie
+        _save_catalog(Main_data)
     if broadcast:
         _broadcast_catalog()
     return True
@@ -276,25 +337,7 @@ def _broadcast_catalog():
 
 @app.route("/api/movies")
 def get_movies():
-    response_data = None
-    with main_data_lock:
-        app.logger.warning(
-            "API CHECK | defaults=%s | movies=%s",
-            len(Main_data.get("default_mov", [])),
-            len(Main_data.get("movies", []))
-        )
-        response_data = deepcopy(Main_data)
-
-    app.logger.warning(
-        "API DEBUG | pid=%s | defaults=%d | movies=%d | first_movie=%s",
-        os.getpid(),
-        len(response_data.get("default_mov", [])),
-        len(response_data.get("movies", [])),
-        response_data.get("movies", [{}])[0].get("name", "NONE")
-        if response_data.get("movies") else "NONE"
-    )
-
-    response = jsonify(response_data)
+    response = jsonify(_load_catalog())
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
@@ -317,9 +360,8 @@ def add_movie_from_page():
             "poster": "",
             "source_url": url,
         })
-        default_urls = list(Main_data["default_mov"])
+        _save_catalog(Main_data)
 
-    _persist_default_movies(default_urls)
     _broadcast_catalog()
     Thread(target=_refresh_movie_url, args=(url,), daemon=True).start()
     return jsonify({
@@ -354,9 +396,8 @@ def edit_movie_from_page():
             "poster": "",
             "source_url": new_url,
         }
-        default_urls = list(Main_data["default_mov"])
+        _save_catalog(Main_data)
 
-    _persist_default_movies(default_urls)
     _broadcast_catalog()
     Thread(target=_refresh_movie_url, args=(new_url,), daemon=True).start()
     return jsonify({
@@ -379,9 +420,8 @@ def remove_movie_from_page():
         movies = Main_data.setdefault("movies", [])
         if movie_index < len(movies):
             movies.pop(movie_index)
-        default_urls = list(Main_data["default_mov"])
+        _save_catalog(Main_data)
 
-    _persist_default_movies(default_urls)
     _broadcast_catalog()
     return jsonify({"message": "Movie removed successfully"}), 200
 
@@ -426,9 +466,8 @@ def reorder_movies():
             movies_by_url.get(url, {"name": "Loading movie links...", "source_url": url})
             for url in new_order
         ]
-        default_urls = list(new_order)
+        _save_catalog(Main_data)
 
-    _persist_default_movies(default_urls)
     _broadcast_catalog()
     return jsonify({"message": "Movies reordered successfully"}), 200
 
@@ -512,73 +551,25 @@ def parallel_map(items, worker, fetcher):
 
 
 def fetch_json_data():
-    document = _mongo_collection().find_one({"_id": MONGODB_DOCUMENT_ID})
-    if document is None:
-        return None
-    data = document.get("data")
-    if not isinstance(data, dict):
-        raise ValueError("MongoDB Main_data document must contain an object in 'data'")
-    default_movies = data.get("default_mov", [])
+    default_movies = _load_catalog().get("default_mov", [])
     if not isinstance(default_movies, list) or any(
         not isinstance(url, str) or not url.strip() for url in default_movies
     ):
-        raise ValueError("MongoDB default_mov must be a list of non-empty URLs")
+        raise ValueError("SQLite catalog default_mov must be a list of non-empty URLs")
     return {"default_mov": [url.strip() for url in default_movies]}
 
+
 def initialize_main_data():
-    stored_data = fetch_json_data()
-
-    if stored_data is None:
-        stored_data = {"default_mov": _default_movies_snapshot()}
-        update_cloud_data(stored_data)
-
+    stored_data = _load_catalog()
     with main_data_lock:
         Main_data.clear()
-        Main_data.update({
-            "default_mov": list(stored_data["default_mov"]),
-            "movies": []
-        })
+        Main_data.update(stored_data)
 
     app.logger.warning(
         "INIT COMPLETE | defaults=%d | movies=%d",
         len(Main_data["default_mov"]),
         len(Main_data["movies"])
     )
-
-
-def update_videos_data(data):
-    default_movies = list(data.get("default_mov", []))
-    new_movies = []
-
-    for url in default_movies:
-        try:
-            result = update_movie_video_links(url)
-            result = dict(result) if isinstance(result, dict) else {}
-            result["source_url"] = url
-            new_movies.append(result)
-        except Exception:
-            app.logger.exception("MOVIE UPDATE FAILED: %s", url)
-            new_movies.append({
-                "name": "Error",
-                "poster": "",
-                "source_url": url
-            })
-
-    with main_data_lock:
-        Main_data.clear()
-        Main_data.update({
-            "default_mov": default_movies,
-            "movies": new_movies
-        })
-
-        app.logger.warning(
-            "CATALOG COMMITTED | defaults=%d | movies=%d",
-            len(Main_data["default_mov"]),
-            len(Main_data["movies"])
-        )
-
-    _broadcast_catalog()
-    
 
 
 def update_videos_data(data):
@@ -605,7 +596,7 @@ def update_videos_data(data):
             "default_mov": default_movies,
             "movies": new_movies
         })
-        print(f"updated links { Main_data } ",flush=True)
+        _save_catalog(Main_data)
         app.logger.warning(
             "CATALOG COMMITTED | defaults=%d | movies=%d",
             len(Main_data["default_mov"]),
@@ -788,39 +779,6 @@ def update_movie_video_links(current_movie):
         fetcher.close()
 
 
-def update_cloud_data(data):
-    if not isinstance(data, dict):
-        raise ValueError("MongoDB data must be an object")
-    default_movies = data.get("default_mov")
-    if not isinstance(default_movies, list) or any(
-        not isinstance(url, str) or not url.strip() for url in default_movies
-    ):
-        raise ValueError("MongoDB default_mov must be a list of non-empty URLs")
-    _mongo_collection().replace_one(
-        {"_id": MONGODB_DOCUMENT_ID},
-        {
-            "_id": MONGODB_DOCUMENT_ID,
-            "data": {"default_mov": [url.strip() for url in default_movies]},
-        },
-        upsert=True
-    )
-    print("Default movie URLs updated successfully in MongoDB.")
-
-
-def _mongo_collection():
-    global mongo_client
-    if not MONGODB_URI:
-        raise RuntimeError("Set the MONGODB_URI environment variable.")
-
-    with mongo_client_lock:
-        if mongo_client is None:
-            mongo_client = MongoClient(
-                MONGODB_URI,
-                serverSelectionTimeoutMS=5000,
-                tlsCAFile=certifi.where()
-            )
-    return mongo_client[MONGODB_DATABASE][MONGODB_COLLECTION]
-
 def run_update_loop():
     app.logger.info("UPDATER: thread started")
 
@@ -862,16 +820,17 @@ def run_update_loop():
                     app.logger.info("Catalog refresh already running.")
 
             try:
-                cloud_data = fetch_json_data()
+                stored_data = fetch_json_data()
+                with main_data_lock:
+                    current_defaults = deepcopy(Main_data["default_mov"])
                 if (
-                    cloud_data
-                    and cloud_data["default_mov"] != _default_movies_snapshot()
+                    stored_data["default_mov"] != current_defaults
                 ):
                     app.logger.info("Default movie list changed; rebuilding catalog.")
-                    update_videos_data(cloud_data)
+                    update_videos_data(stored_data)
 
-            except (PyMongoError, ValueError, KeyError) as exc:
-                app.logger.exception("MongoDB movie check failed: %s", exc)
+            except (sqlite3.Error, ValueError, KeyError) as exc:
+                app.logger.exception("SQLite movie check failed: %s", exc)
 
             time.sleep(LINK_CHECK_INTERVAL_SECONDS)
 
