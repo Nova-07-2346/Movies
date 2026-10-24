@@ -751,8 +751,10 @@ def _mongo_collection():
 
 def run_update_loop():
     initialize_main_data()
+    print("start_updater")
     update_videos_data({"default_mov": _default_movies_snapshot()})
     while True:
+        print("loop start")
         with main_data_lock:
             movies = deepcopy(Main_data.get("movies", []))
         failed_link = _find_failed_stream_link(movies)
