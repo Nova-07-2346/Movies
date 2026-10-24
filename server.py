@@ -275,11 +275,18 @@ def _broadcast_catalog():
                     catalog_clients.discard(client)
 
 
-@app.get("/api/movies")
-def get_main_data():
+@app.route("/api/movies")
+def get_movies():
     with main_data_lock:
-        data = deepcopy(Main_data)
-    return jsonify(data)
+        response_data = deepcopy(Main_data)
+
+    app.logger.warning(
+        "API RESPONSE: default_mov=%d, movies=%d",
+        len(response_data.get("default_mov", [])),
+        len(response_data.get("movies", []))
+    )
+
+    return jsonify(response_data)
 
 
 @app.post("/api/add_movie_from_page")
