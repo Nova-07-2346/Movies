@@ -274,19 +274,25 @@ def _broadcast_catalog():
                 for client in disconnected:
                     catalog_clients.discard(client)
 
-
-@app.route("/api/movies/get")
+@app.route("/api/movies")
 def get_movies():
     with main_data_lock:
         response_data = deepcopy(Main_data)
 
     app.logger.warning(
-        "API RESPONSE: default_mov=%d, movies=%d",
+        "API DEBUG | pid=%s | defaults=%d | movies=%d | first_movie=%s",
+        os.getpid(),
         len(response_data.get("default_mov", [])),
-        len(response_data.get("movies", []))
+        len(response_data.get("movies", [])),
+        response_data.get("movies", [{}])[0].get("name", "NONE")
+        if response_data.get("movies") else "NONE"
     )
 
-    return jsonify(response_data)
+    response = jsonify(response_data)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @app.post("/api/add_movie_from_page")
