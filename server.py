@@ -549,7 +549,7 @@ def update_movie_video_links(current_movie):
     results6 = []
     poster = ""
     fetcher = PageFetcher()
-
+    print(f"current_movie : {current_movie} ", flush=True)
     try:
         # LEVEL 1: Movie page
         soup = fetcher.get_soup(current_movie)
