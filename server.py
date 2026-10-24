@@ -276,7 +276,13 @@ def _broadcast_catalog():
 
 @app.route("/api/movies")
 def get_movies():
+    response_data = None
     with main_data_lock:
+        app.logger.warning(
+            "API CHECK | defaults=%s | movies=%s",
+            len(Main_data.get("default_mov", [])),
+            len(Main_data.get("movies", []))
+        )
         response_data = deepcopy(Main_data)
 
     app.logger.warning(
