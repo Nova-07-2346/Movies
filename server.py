@@ -519,17 +519,12 @@ def fetch_json_data():
         raise ValueError("MongoDB default_mov must be a list of non-empty URLs")
     return {"default_mov": [url.strip() for url in default_movies]}
 
-
 def initialize_main_data():
-    global Main_data
     stored_data = fetch_json_data()
+
     if stored_data is None:
-        initial_data = {"default_mov": _default_movies_snapshot()}
-        update_cloud_data(initial_data)
-        with main_data_lock:
-            Main_data = {"default_mov": initial_data["default_mov"], "movies": []}
-        print("MongoDB collection was empty; initialized it with default movie URLs.")
-        return
+        stored_data = {"default_mov": _default_movies_snapshot()}
+        update_cloud_data(stored_data)
 
     with main_data_lock:
         Main_data.clear()
@@ -537,23 +532,26 @@ def initialize_main_data():
             "default_mov": list(stored_data["default_mov"]),
             "movies": []
         })
-    update_cloud_data(stored_data)
-    _broadcast_catalog()
-    print("Loaded default movie URLs from MongoDB.")
+
+    app.logger.warning(
+        "INIT COMPLETE | defaults=%d | movies=%d",
+        len(Main_data["default_mov"]),
+        len(Main_data["movies"])
+    )
 
 
 def update_videos_data(data):
-    default_movies = data.get("default_mov", [])
+    default_movies = list(data.get("default_mov", []))
     new_movies = []
 
     for url in default_movies:
         try:
-            movie = update_movie_video_links(url)
-            movie = dict(movie) if isinstance(movie, dict) else {}
-            movie["source_url"] = url
-            new_movies.append(movie)
+            result = update_movie_video_links(url)
+            result = dict(result) if isinstance(result, dict) else {}
+            result["source_url"] = url
+            new_movies.append(result)
         except Exception:
-            app.logger.exception("Failed to process movie: %s", url)
+            app.logger.exception("MOVIE UPDATE FAILED: %s", url)
             new_movies.append({
                 "name": "Error",
                 "poster": "",
@@ -563,12 +561,47 @@ def update_videos_data(data):
     with main_data_lock:
         Main_data.clear()
         Main_data.update({
-            "default_mov": list(default_movies),
+            "default_mov": default_movies,
             "movies": new_movies
         })
 
         app.logger.warning(
-            "CATALOG UPDATED: defaults=%d, movies=%d",
+            "CATALOG COMMITTED | defaults=%d | movies=%d",
+            len(Main_data["default_mov"]),
+            len(Main_data["movies"])
+        )
+
+    _broadcast_catalog()
+    
+
+
+def update_videos_data(data):
+    default_movies = list(data.get("default_mov", []))
+    new_movies = []
+
+    for url in default_movies:
+        try:
+            result = update_movie_video_links(url)
+            result = dict(result) if isinstance(result, dict) else {}
+            result["source_url"] = url
+            new_movies.append(result)
+        except Exception:
+            app.logger.exception("Failed to update: %s", url)
+            new_movies.append({
+                "name": "Error",
+                "poster": "",
+                "source_url": url
+            })
+
+    with main_data_lock:
+        Main_data.clear()
+        Main_data.update({
+            "default_mov": default_movies,
+            "movies": new_movies
+        })
+
+        app.logger.warning(
+            "CATALOG COMMITTED | defaults=%d | movies=%d",
             len(Main_data["default_mov"]),
             len(Main_data["movies"])
         )
