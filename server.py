@@ -749,15 +749,29 @@ def _mongo_collection():
     return mongo_client[MONGODB_DATABASE][MONGODB_COLLECTION]
 
 def run_update_loop():
+    app.logger.info("UPDATER: thread started")
+
     try:
-        app.logger.info("Updater thread starting")
-
+        app.logger.info("UPDATER: initializing main data")
         initialize_main_data()
-        app.logger.info("Main data initialized")
 
-        print("start_updater", flush=True)
-        update_videos_data({"default_mov": _default_movies_snapshot()})
+        app.logger.info("UPDATER: main data initialized")
 
+        app.logger.info("UPDATER: building movie catalog")
+        update_videos_data({
+            "default_mov": _default_movies_snapshot()
+        })
+
+        with main_data_lock:
+            app.logger.info(
+                "UPDATER: catalog contains %d movies",
+                len(Main_data.get("movies", []))
+            )
+
+    except Exception:
+        app.logger.exception("UPDATER: catalog initialization failed")
+        return
+    try:
         while True:
             print("loop start", flush=True)
 
