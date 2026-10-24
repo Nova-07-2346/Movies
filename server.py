@@ -18,7 +18,7 @@ import certifi
 from flask_cors import CORS
 
 
-MONGODB_URI = os.getenv("MONGODB_URI", "")
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://novans2424_db_user:NfOtLzAA8FRAc42e@cluster0.cfexnxm.mongodb.net/")
 MONGODB_DATABASE = os.getenv("MONGODB_DATABASE", "iptv")
 MONGODB_COLLECTION = os.getenv("MONGODB_COLLECTION", "app_state")
 MONGODB_DOCUMENT_ID = os.getenv("MONGODB_DOCUMENT_ID", "maindata")
@@ -66,8 +66,9 @@ def add_remote_control_cors_headers(response):
         response.headers.add("Vary", "Origin")
     return response
 
-
 def _catalog_snapshot():
+    with main_data_lock:
+        return deepcopy(Main_data)
     catalog = _load_catalog()
     with main_data_lock:
         Main_data.clear()
