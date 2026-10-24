@@ -526,28 +526,48 @@ def initialize_main_data():
         return
 
     with main_data_lock:
-        Main_data = {"default_mov": stored_data["default_mov"], "movies": []}
+        Main_data.clear()
+        Main_data.update({
+            "default_mov": list(stored_data["default_mov"]),
+            "movies": []
+        })
     update_cloud_data(stored_data)
     _broadcast_catalog()
     print("Loaded default movie URLs from MongoDB.")
 
 
 def update_videos_data(data):
-    global Main_data
     default_movies = data.get("default_mov", [])
-    main_data = {
-        "default_mov": list(default_movies),
-        "movies": []
-    }
-    for movie in default_movies:
-        results = update_movie_video_links(movie)
-        results["source_url"] = movie
-        main_data["movies"].append(results)
-    with main_data_lock:
-        Main_data = main_data
-        print(f"Main_data: {main_data}", flush=True)
-    _broadcast_catalog()
+    new_movies = []
 
+    for url in default_movies:
+        try:
+            movie = update_movie_video_links(url)
+            movie = dict(movie) if isinstance(movie, dict) else {}
+            movie["source_url"] = url
+            new_movies.append(movie)
+        except Exception:
+            app.logger.exception("Failed to process movie: %s", url)
+            new_movies.append({
+                "name": "Error",
+                "poster": "",
+                "source_url": url
+            })
+
+    with main_data_lock:
+        Main_data.clear()
+        Main_data.update({
+            "default_mov": list(default_movies),
+            "movies": new_movies
+        })
+
+        app.logger.warning(
+            "CATALOG UPDATED: defaults=%d, movies=%d",
+            len(Main_data["default_mov"]),
+            len(Main_data["movies"])
+        )
+
+    _broadcast_catalog()
 
 def update_movie_video_links(current_movie):
     results1 = []
