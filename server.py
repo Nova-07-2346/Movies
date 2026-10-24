@@ -748,47 +748,67 @@ def _mongo_collection():
             )
     return mongo_client[MONGODB_DATABASE][MONGODB_COLLECTION]
 
-
 def run_update_loop():
-    initialize_main_data()
-    print("start_updater")
-    update_videos_data({"default_mov": _default_movies_snapshot()})
-    while True:
-        print("loop start")
-        with main_data_lock:
-            movies = deepcopy(Main_data.get("movies", []))
-        failed_link = _find_failed_stream_link(movies)
-        if failed_link:
-            app.logger.warning(
-                "Video link is unavailable or contains a 404 error: %s. "
-                "Refreshing every default movie URL now.",
-                failed_link,
-            )
-            if not _start_full_catalog_refresh():
-                app.logger.info("A full movie-link refresh is already running.")
+    try:
+        app.logger.info("Updater thread starting")
 
-        try:
-            cloud_data = fetch_json_data()
-            if cloud_data and cloud_data["default_mov"] != _default_movies_snapshot():
-                print("Default movie list changed in MongoDB; rebuilding catalog.")
-                update_videos_data(cloud_data)
-        except (PyMongoError, ValueError) as e:
-            app.logger.error("Unable to check MongoDB movie URLs: %s", e)
-        time.sleep(LINK_CHECK_INTERVAL_SECONDS)
-        # empty fetch render link for keep online https://render.com/
-        requests.get("https://moviepage.onrender.com/", timeout=5)
+        initialize_main_data()
+        app.logger.info("Main data initialized")
+
+        print("start_updater", flush=True)
+        update_videos_data({"default_mov": _default_movies_snapshot()})
+
+        while True:
+            print("loop start", flush=True)
+
+            with main_data_lock:
+                movies = deepcopy(Main_data.get("movies", []))
+
+            failed_link = _find_failed_stream_link(movies)
+
+            if failed_link:
+                app.logger.warning(
+                    "Unavailable video link: %s. Refreshing catalog.",
+                    failed_link,
+                )
+                if not _start_full_catalog_refresh():
+                    app.logger.info("Catalog refresh already running.")
+
+            try:
+                cloud_data = fetch_json_data()
+                if (
+                    cloud_data
+                    and cloud_data["default_mov"] != _default_movies_snapshot()
+                ):
+                    app.logger.info("Default movie list changed; rebuilding catalog.")
+                    update_videos_data(cloud_data)
+
+            except (PyMongoError, ValueError, KeyError) as exc:
+                app.logger.exception("MongoDB movie check failed: %s", exc)
+
+            time.sleep(LINK_CHECK_INTERVAL_SECONDS)
+
+            try:
+                requests.get(
+                    "https://moviepage.onrender.com/",
+                    timeout=5,
+                )
+            except requests.RequestException:
+                app.logger.exception("Keep-alive request failed")
+
+    except Exception:
+        app.logger.exception("Updater thread crashed during startup or execution")
 
 
 if __name__ == "__main__":
-    Thread(target=run_update_loop, daemon=True).start()
+    Thread(target=run_update_loop, daemon=True, name="movie-updater").start()
 
     app.run(
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "5000")),
         threaded=True,
         use_reloader=False,
-        debug=True
+        debug=True,
     )
 else:
-    Thread(target=run_update_loop, daemon=True).start()
-                    
+    Thread(target=run_update_loop, daemon=True, name="movie-updater").start()
