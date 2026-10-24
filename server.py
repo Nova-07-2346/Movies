@@ -538,6 +538,7 @@ def update_videos_data(data):
         main_data["movies"].append(results)
     with main_data_lock:
         Main_data = main_data
+        print(f"Main_data: {main_data}", flush=True)
     _broadcast_catalog()
 
 
