@@ -275,7 +275,7 @@ def _broadcast_catalog():
                     catalog_clients.discard(client)
 
 
-@app.route("/api/movies")
+@app.route("/api/movie")
 def get_movies():
     with main_data_lock:
         response_data = deepcopy(Main_data)
