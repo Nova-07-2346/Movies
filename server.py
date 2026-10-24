@@ -605,7 +605,7 @@ def update_videos_data(data):
             "default_mov": default_movies,
             "movies": new_movies
         })
-
+        print(f"updated links { Main_data } ",flush=True)
         app.logger.warning(
             "CATALOG COMMITTED | defaults=%d | movies=%d",
             len(Main_data["default_mov"]),
